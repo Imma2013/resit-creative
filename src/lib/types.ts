@@ -1,6 +1,6 @@
 export type AppTab = 'design' | 'video' | 'calendar' | 'agent' | 'settings';
 
-export type DesignElementType = 'text' | 'image' | 'shape';
+export type DesignElementType = 'text' | 'image' | 'shape' | 'frame' | 'vector';
 export type DesignElement = {
   id: string;
   type: DesignElementType;
@@ -11,7 +11,14 @@ export type DesignElement = {
   text?: string;
   src?: string;
   style?: Record<string, string | number>;
+  rotation?: number;
+  parentId?: string;
+  layout?: { mode: 'none' | 'horizontal' | 'vertical'; gap: number; padding: number; align: 'start' | 'center' | 'end' | 'stretch' };
+  constraints?: { horizontal: 'left' | 'right' | 'center' | 'scale'; vertical: 'top' | 'bottom' | 'center' | 'scale' };
+  component?: DesignElementComponent;
 };
+
+export type DesignElementComponent = { componentId: string; variant?: string; overrides?: Record<string, string | number> };
 
 export type DesignAction = {
   name: string;

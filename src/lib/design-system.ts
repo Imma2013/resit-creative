@@ -5,12 +5,14 @@ export type DesignToken = {
   value: string | number;
 };
 
+export type DesignVariant = { id: string; name: string; properties: Record<string, string | number | boolean> };
+
 export type DesignComponent = {
   id: string;
   name: string;
   description?: string;
   elementIds: string[];
-  variants: Record<string, string[]>;
+  variants: DesignVariant[];
 };
 
 export type DesignLibrary = {

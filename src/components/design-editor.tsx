@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, ImagePlus, Minus, Plus, Redo2, Square, Trash2, Type, Undo2, Upload, WandSparkles } from 'lucide-react';
+import { AlignCenterHorizontal, AlignCenterVertical, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter, Copy, Frame, ImagePlus, Minus, Plus, Redo2, RotateCw, Square, Trash2, Type, Undo2, Upload, WandSparkles } from 'lucide-react';
 import type { AgentMode, DesignAction, DesignElement } from '@/lib/types';
 import type { DesignComponent, DesignToken } from '@/lib/design-system';
 import DesignSystemPanel from './design-system-panel';
@@ -24,6 +24,8 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
   const [busy, setBusy] = useState(false);
   const [agentText, setAgentText] = useState('');
   const [agentMode, setAgentMode] = useState<AgentMode>('edit');
+  const [snap, setSnap] = useState(true);
+  const [resize, setResize] = useState<{ id: string; edge: string; startX: number; startY: number; width: number; height: number; x: number; y: number } | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,7 +39,42 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
     let next = [...elements];
     for (const action of actions) {
       const a = action.args;
-      if (action.name === 'design.add_element') {
+      if (action.name === 'design.add_frame') {
+        const id = `frame-${crypto.randomUUID()}`;
+        next.push({ id, type: 'frame', x: Number(a.x ?? 80), y: Number(a.y ?? 80), width: Number(a.width ?? 880), height: Number(a.height ?? 1100), text: String(a.name ?? 'Frame'), style: { background: String(a.background ?? '#fff'), color: '#111', borderRadius: 24 }, layout: { mode: (['horizontal','vertical'].includes(String(a.layout)) ? String(a.layout) : 'none') as 'none'|'horizontal'|'vertical', gap: Number(a.gap ?? 16), padding: Number(a.padding ?? 24), align: 'start' }, constraints: { horizontal: 'left', vertical: 'top' } });
+        setSelected(id);
+      } else if (action.name === 'design.align') {
+        const ids = Array.isArray(a.elementIds) && a.elementIds.length ? a.elementIds.map(String) : selected ? [selected] : [];
+        const picked = next.filter(e => ids.includes(e.id));
+        if (picked.length > 1) {
+          const axis = String(a.axis);
+          const minX = Math.min(...picked.map(e => e.x)), minY = Math.min(...picked.map(e => e.y));
+          const maxR = Math.max(...picked.map(e => e.x + e.width)), maxB = Math.max(...picked.map(e => e.y + e.height));
+          const centerX = (minX + maxR) / 2, centerY = (minY + maxB) / 2;
+          next = next.map(e => ids.includes(e.id) ? { ...e, ...(axis === 'x' ? { x: String(a.mode ?? 'center') === 'start' ? minX : String(a.mode ?? 'center') === 'end' ? maxR - e.width : centerX - e.width/2 } : { y: String(a.mode ?? 'center') === 'start' ? minY : String(a.mode ?? 'center') === 'end' ? maxB - e.height : centerY - e.height/2 }) } : e);
+        }
+      } else if (action.name === 'design.distribute') {
+        const ids = Array.isArray(a.elementIds) ? a.elementIds.map(String) : [];
+        const picked = next.filter(e => ids.includes(e.id)).sort((a,b) => String(a.id).localeCompare(String(b.id)));
+        if (picked.length > 2) {
+          const axis = String(a.axis);
+          const first = picked[0], last = picked[picked.length - 1];
+          const span = axis === 'x' ? (last.x - first.x) : (last.y - first.y);
+          const step = span / (picked.length - 1);
+          next = next.map(e => { const i = picked.findIndex(p => p.id === e.id); return i >= 0 ? { ...e, ...(axis === 'x' ? { x: first.x + step*i } : { y: first.y + step*i }) } : e; });
+        }
+      } else if (action.name === 'design.rotate') {
+        const ids = Array.isArray(a.elementIds) && a.elementIds.length ? a.elementIds.map(String) : selected ? [selected] : [];
+        next = next.map(e => ids.includes(e.id) ? { ...e, rotation: Number(e.rotation ?? 0) + Number(a.degrees ?? 0) } : e);
+      } else if (action.name === 'design.set_layout') {
+        next = next.map(e => e.id === a.frameId ? { ...e, layout: { mode: String(a.mode) as 'none'|'horizontal'|'vertical', gap: Number(a.gap ?? e.layout?.gap ?? 16), padding: Number(a.padding ?? e.layout?.padding ?? 24), align: (String(a.align ?? e.layout?.align ?? 'start') as 'start'|'center'|'end'|'stretch') } } : e);
+      } else if (action.name === 'design.set_constraints') {
+        next = next.map(e => e.id === a.elementId ? { ...e, constraints: { horizontal: String(a.horizontal) as 'left'|'right'|'center'|'scale', vertical: String(a.vertical) as 'top'|'bottom'|'center'|'scale' } } : e);
+      } else if (action.name === 'design.create_variant') {
+        setAgentText(`Variant “${String(a.name ?? 'Variant')}” is ready to attach to the component.`);
+      } else if (action.name === 'design.critique_selection') {
+        setAgentText('Critique mode is active. The agent should return concrete hierarchy, spacing, typography, and contrast fixes without changing the canvas.');
+      } else if (action.name === 'design.add_element') {
         const id = `el-${crypto.randomUUID()}`;
         const type = (a.type as DesignElement['type']) || 'shape';
         next.push({ id, type, x: Number(a.x ?? 120), y: Number(a.y ?? 120), width: Number(a.width ?? 420), height: Number(a.height ?? 220), text: a.text as string | undefined, style: { background: String(a.background ?? '#111'), color: String(a.color ?? '#fff'), fontSize: Number(a.fontSize ?? 42), fontWeight: Number(a.fontWeight ?? 700) } });
@@ -151,8 +188,9 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
       const { id, offsetX, offsetY } = drag.current;
       const rect = (event.currentTarget as Window).document.querySelector('[data-design-canvas="true"]')?.getBoundingClientRect();
       if (!rect) return;
-      const x = Math.max(0, Math.min(CANVAS_W - 20, (event.clientX - rect.left) / zoom - offsetX));
-      const y = Math.max(0, Math.min(CANVAS_H - 20, (event.clientY - rect.top) / zoom - offsetY));
+      let x = Math.max(0, Math.min(CANVAS_W - 20, (event.clientX - rect.left) / zoom - offsetX));
+      let y = Math.max(0, Math.min(CANVAS_H - 20, (event.clientY - rect.top) / zoom - offsetY));
+      if (snap) { x = Math.round(x / 8) * 8; y = Math.round(y / 8) * 8; }
       setElements((current) => current.map((e) => e.id === id ? { ...e, x, y } : e));
     };
     const up = () => {
@@ -160,10 +198,31 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
-  }, [elements, zoom]);
+  }, [elements, zoom, snap]);
+
+  useEffect(() => {
+    if (!resize) return;
+    const move = (event: PointerEvent) => {
+      const dx = (event.clientX - resize.startX) / zoom; const dy = (event.clientY - resize.startY) / zoom;
+      setElements(cur => cur.map(e => e.id === resize.id ? { ...e, width: Math.max(40, resize.width + dx), height: Math.max(40, resize.height + dy) } : e));
+    };
+    const up = () => { setHistory(h => [...h.slice(-39), elements]); setFuture([]); setResize(null); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  }, [resize, zoom, elements]);
 
   const undo = () => { const previous = history.at(-1); if (!previous) return; setFuture((f) => [...f, elements]); setHistory((h) => h.slice(0, -1)); setElements(previous); };
   const redo = () => { const next = future.at(-1); if (!next) return; setHistory((h) => [...h, elements]); setFuture((f) => f.slice(0, -1)); setElements(next); };
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }
+      if ((event.metaKey || event.ctrlKey) && event.key === 'd' && selectedElement) { event.preventDefault(); duplicate(); }
+      if (event.key === 'Delete' || event.key === 'Backspace') { if (selectedElement && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') { event.preventDefault(); remove(); } }
+      if (event.key === 'Escape') setSelected(null);
+    };
+    window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
+  });
+
   const uploadImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -189,12 +248,12 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
   return <section className="design-editor surface">
     <div className="editor-toolbar">
       <div className="tool-group"><button className="icon-btn" onClick={undo} disabled={!history.length}><Undo2 size={16}/></button><button className="icon-btn" onClick={redo} disabled={!future.length}><Redo2 size={16}/></button></div>
-      <div className="tool-group"><button className="editor-tool" onClick={addText}><Type size={15}/>Text</button><label className="editor-tool" style={{cursor:'pointer'}}><ImagePlus size={15}/>Image<input type="file" accept="image/*" onChange={uploadImage} hidden /></label><button className="editor-tool" onClick={addShape}><Square size={15}/>Shape</button><button className="editor-tool" onClick={duplicate} disabled={!selectedElement}><Copy size={15}/>Duplicate</button><button className="editor-tool danger" onClick={remove} disabled={!selectedElement}><Trash2 size={15}/>Delete</button></div>
-      <div className="zoom-controls"><button className="icon-btn" onClick={() => setZoom(Math.max(.35, zoom-.05))}><Minus size={14}/></button><span>{Math.round(zoom*100)}%</span><button className="icon-btn" onClick={() => setZoom(Math.min(.9, zoom+.05))}><Plus size={14}/></button></div>
+      <div className="tool-group"><button className="editor-tool" onClick={addText}><Type size={15}/>Text</button><label className="editor-tool" style={{cursor:'pointer'}}><ImagePlus size={15}/>Image<input type="file" accept="image/*" onChange={uploadImage} hidden /></label><button className="editor-tool" onClick={addShape}><Square size={15}/>Shape</button><button className="editor-tool" onClick={() => applyActions([{ name: 'design.add_frame', args: { name: 'Frame', x: 60, y: 60, width: 900, height: 1120, layout: 'vertical' } }])}><Frame size={15}/>Frame</button><button className={`editor-tool ${snap ? 'active-tool' : ''}`} onClick={() => setSnap(!snap)}>Snap</button><button className="editor-tool" onClick={duplicate} disabled={!selectedElement}><Copy size={15}/>Duplicate</button><button className="editor-tool danger" onClick={remove} disabled={!selectedElement}><Trash2 size={15}/>Delete</button></div>
+      <div className="zoom-controls"><button className="icon-btn" onClick={() => setZoom(Math.max(.35, zoom-.05))}><Minus size={14}/></button><span>{Math.round(zoom*100)}%</span><button className="icon-btn" onClick={() => setZoom(Math.min(.9, zoom+.05))}><Plus size={14}/></button></div><div className="tool-group advanced-tools"><button className="icon-btn" title="Align center horizontally" onClick={() => applyActions([{ name:'design.align', args:{ elementIds: selected ? [selected] : [], axis:'x', mode:'center' } }])}><AlignCenterHorizontal size={14}/></button><button className="icon-btn" title="Align center vertically" onClick={() => applyActions([{ name:'design.align', args:{ elementIds: selected ? [selected] : [], axis:'y', mode:'center' } }])}><AlignCenterVertical size={14}/></button><button className="icon-btn" title="Rotate 15 degrees" onClick={() => applyActions([{ name:'design.rotate', args:{ elementIds: selected ? [selected] : [], degrees:15 } }])}><RotateCw size={14}/></button></div>
     </div>
     <div className="editor-main">
       <div className="canvas-stage"><div className="design-canvas" data-design-canvas="true" style={{ width: CANVAS_W * zoom, height: CANVAS_H * zoom }}>
-        {elements.map((element) => <div key={element.id} onPointerDown={(event) => { event.stopPropagation(); setSelected(element.id); const rect = event.currentTarget.getBoundingClientRect(); drag.current = { id: element.id, offsetX: (event.clientX-rect.left)/zoom, offsetY: (event.clientY-rect.top)/zoom }; }} className={`design-element ${selected === element.id ? 'selected' : ''}`} style={{ left: element.x*zoom, top: element.y*zoom, width: element.width*zoom, height: element.height*zoom, background: element.type === 'shape' ? String(element.style?.background ?? '#111') : 'transparent', color: String(element.style?.color ?? '#111'), fontSize: Number(element.style?.fontSize ?? 32)*zoom, fontWeight: Number(element.style?.fontWeight ?? 500) }}>{element.type === 'image' && element.src ? <img src={element.src} alt={element.text ?? 'Canvas asset'} draggable={false} style={{width:'100%',height:'100%',objectFit:'cover'}} /> : element.text}</div>)}
+        {elements.map((element) => <div key={element.id} onPointerDown={(event) => { event.stopPropagation(); setSelected(element.id); const rect = event.currentTarget.getBoundingClientRect(); drag.current = { id: element.id, offsetX: (event.clientX-rect.left)/zoom, offsetY: (event.clientY-rect.top)/zoom }; }} className={`design-element ${selected === element.id ? 'selected' : ''}`} style={{ left: element.x*zoom, top: element.y*zoom, width: element.width*zoom, height: element.height*zoom, background: (element.type === 'shape' || element.type === 'frame') ? String(element.style?.background ?? '#111') : 'transparent', color: String(element.style?.color ?? '#111'), fontSize: Number(element.style?.fontSize ?? 32)*zoom, fontWeight: Number(element.style?.fontWeight ?? 500), transform: `rotate(${Number(element.rotation ?? 0)}deg)`, borderRadius: element.style?.borderRadius as string | number | undefined, zIndex: element.type === 'frame' ? 0 : 1 }}>{element.type === 'image' && element.src ? <img src={element.src} alt={element.text ?? 'Canvas asset'} draggable={false} style={{width:'100%',height:'100%',objectFit:'cover'}} /> : element.text}{element.type === 'frame' && <span style={{position:'absolute',top:8,left:10,fontSize:10,opacity:.45,pointerEvents:'none'}}>{element.text}</span>}{selected === element.id && <><span className="resize-handle rh-se" onPointerDown={(event) => { event.stopPropagation(); setResize({ id: element.id, edge:'se', startX:event.clientX, startY:event.clientY, width:element.width, height:element.height, x:element.x, y:element.y }); }} /><span className="rotate-handle" onPointerDown={(event) => { event.stopPropagation(); const start=event.clientY; const base=Number(element.rotation??0); const move=(e:PointerEvent)=>{ setElements(cur=>cur.map(x=>x.id===element.id?{...x,rotation:base+(start-e.clientY)/2}:x)); }; const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); }; window.addEventListener('pointermove',move); window.addEventListener('pointerup',up); }} /></>}</div>)}
       </div></div>
       <aside className={`editor-ai ${ai ? 'on' : ''}`}>
         <div className="ai-header"><div><div className="ai-title"><WandSparkles size={16}/>AI mode</div><div className="hint">Gemini operates the same editor tools.</div></div><button className="toggle" onClick={() => setAi(!ai)} aria-label="Toggle AI" style={{ opacity: ai ? 1 : .45 }} /></div>
