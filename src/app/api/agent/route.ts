@@ -13,8 +13,7 @@ ${JSON.stringify(context ?? {}, null, 2)}`;
     const candidate = response.response.candidates?.[0];
     const parts = candidate?.content?.parts ?? [];
     const actions = parts.filter((part: any) => part.functionCall).map((part: any) => ({ name: part.functionCall.name, args: part.functionCall.args ?? {} }));
-    const text = parts.filter((part: any) => part.text).map((part: any) => part.text).join('
-').trim();
+    const text = parts.filter((part: any) => part.text).map((part: any) => part.text).join('\n').trim();
     return NextResponse.json({ text, actions });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Agent request failed';
