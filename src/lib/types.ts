@@ -42,3 +42,17 @@ export type Asset = {
   type: 'image' | 'video' | 'audio' | 'font';
   storagePath?: string;
 };
+
+
+export type AgentMode = 'generate' | 'edit' | 'critique';
+
+export type DesignTokenBinding = {
+  property: string;
+  tokenId: string;
+};
+
+export type DesignComponentInstance = {
+  componentId: string;
+  variant?: string;
+  overrides?: Record<string, string | number>;
+};

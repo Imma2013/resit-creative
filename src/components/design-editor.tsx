@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, ImagePlus, Minus, Plus, Redo2, Square, Trash2, Type, Undo2, Upload, WandSparkles } from 'lucide-react';
-import type { DesignAction, DesignElement } from '@/lib/types';
+import type { AgentMode, DesignAction, DesignElement } from '@/lib/types';
+import type { DesignComponent, DesignToken } from '@/lib/design-system';
+import DesignSystemPanel from './design-system-panel';
 
 type Props = { ai: boolean; setAi: (value: boolean) => void; prompt: string; setPrompt: (value: string) => void };
 const CANVAS_W = 1080;
@@ -21,6 +23,7 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
   const [zoom, setZoom] = useState(0.55);
   const [busy, setBusy] = useState(false);
   const [agentText, setAgentText] = useState('');
+  const [agentMode, setAgentMode] = useState<AgentMode>('edit');
   const [projectId, setProjectId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -47,16 +50,60 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
         next = next.map((e) => e.id === a.id ? { ...e, width: Number(a.width), height: Number(a.height) } : e);
       } else if (action.name === 'design.delete_element') {
         next = next.filter((e) => e.id !== a.id);
+      } else if (action.name === 'design.apply_token') {
+        const token = String(a.token ?? '');
+        next = next.map((e) => e.id === a.elementId ? { ...e, style: { ...e.style, ...(a.property === 'color' ? { color: token } : a.property === 'background' ? { background: token } : {}) } } : e);
+      } else if (action.name === 'design.edit_selection') {
+        const instruction = String(a.instruction ?? '').toLowerCase();
+        const ids = Array.isArray(a.elementIds) && a.elementIds.length ? a.elementIds.map(String) : selected ? [selected] : [];
+        next = next.map((e) => {
+          if (!ids.includes(e.id)) return e;
+          const style = { ...e.style };
+          let width = e.width, height = e.height, x = e.x, y = e.y;
+          if (instruction.includes('larger') || instruction.includes('bigger')) { width *= 1.15; height *= 1.15; style.fontSize = Number(style.fontSize ?? 32) * 1.15; }
+          if (instruction.includes('smaller')) { width *= .9; height *= .9; style.fontSize = Number(style.fontSize ?? 32) * .9; }
+          if (instruction.includes('bold')) style.fontWeight = 800;
+          if (instruction.includes('center')) x = (CANVAS_W - width) / 2;
+          if (instruction.includes('top')) y = 80;
+          if (instruction.includes('bottom')) y = CANVAS_H - height - 80;
+          return { ...e, x, y, width, height, style };
+        });
+      } else if (action.name === 'design.generate_layout') {
+        const brief = String(a.brief ?? 'New creative');
+        const id = () => `el-${crypto.randomUUID()}`;
+        next = [...next, { id: id(), type: 'shape', x: 0, y: 0, width: CANVAS_W, height: CANVAS_H, style: { background: '#f3f1ec' } }, { id: id(), type: 'text', x: 90, y: 190, width: 820, height: 150, text: brief.slice(0, 80), style: { color: '#111', fontSize: 64, fontWeight: 800 } }, { id: id(), type: 'text', x: 94, y: 370, width: 650, height: 90, text: 'Generated in Resit · editable structure', style: { color: '#666', fontSize: 22, fontWeight: 500 } }];
       }
     }
     if (actions.some((a) => a.name.startsWith('design.'))) commit(next);
+  };
+
+  const applyToken = (token: DesignToken) => {
+    if (!selectedElement) return;
+    const next = elements.map((e) => {
+      if (e.id !== selectedElement.id) return e;
+      const style = { ...e.style };
+      if (token.category === 'color') style.color = token.value;
+      if (token.category === 'typography') { const match = String(token.value).match(/(\d+)\s*\/\s*(\d+)/); if (match) { style.fontWeight = Number(match[1]); style.fontSize = Number(match[2]); } }
+      if (token.category === 'radius') style.borderRadius = token.value;
+      if (token.category === 'spacing') style.padding = token.value;
+      return { ...e, style };
+    });
+    commit(next); setAgentText(`Applied ${token.name}.`);
+  };
+
+  const createComponent = (component: DesignComponent) => setAgentText(`Created reusable component “${component.name}” from ${component.elementIds.length} layer(s).`);
+  const instantiateComponent = (component: DesignComponent) => {
+    const source = elements.find((e) => component.elementIds.includes(e.id));
+    if (!source) return;
+    const copy = { ...source, id: `el-${crypto.randomUUID()}`, x: source.x + 40, y: source.y + 40 };
+    commit([...elements, copy]); setSelected(copy.id); setAgentText(`Instantiated ${component.name}.`);
   };
 
   const runAgent = async () => {
     if (!prompt.trim() || busy) return;
     setBusy(true); setAgentText('');
     try {
-      const res = await fetch('/api/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, context: { surface: 'design', canvas: { width: CANVAS_W, height: CANVAS_H }, elements } }) });
+      const res = await fetch('/api/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, context: { surface: 'design', mode: agentMode, canvas: { width: CANVAS_W, height: CANVAS_H }, selectedId: selected, elements, designSystem: 'Resit Core tokens + reusable components' } }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Agent failed');
       applyActions(data.actions ?? []);
@@ -122,7 +169,7 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
     event.target.value = '';
     if (!file || !file.type.startsWith('image/')) { setAgentText('Please choose an image file.'); return; }
     if (!projectId) { setAgentText('Save the design first, then upload an image.'); return; }
-    setAgentText('Uploading image…');
+    setAgentText('Uploading imageâ¦');
     const form = new FormData(); form.append('file', file); form.append('projectId', projectId);
     try {
       const response = await fetch('/api/assets', { method: 'POST', body: form });
@@ -151,9 +198,8 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
       </div></div>
       <aside className={`editor-ai ${ai ? 'on' : ''}`}>
         <div className="ai-header"><div><div className="ai-title"><WandSparkles size={16}/>AI mode</div><div className="hint">Gemini operates the same editor tools.</div></div><button className="toggle" onClick={() => setAi(!ai)} aria-label="Toggle AI" style={{ opacity: ai ? 1 : .45 }} /></div>
-        {ai ? <><div className="ai-context"><span>DESIGN CONTEXT</span><b>{elements.length} elements · 1080 × 1350</b></div><textarea className="ai-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Make the headline larger and add a bold black shape behind it…" /><div className="ai-footer"><span className="hint">Gemini 3 Flash</span><button className="primary" onClick={runAgent} disabled={busy || !prompt.trim()}>{busy ? 'Working…' : 'Run'}</button></div>{agentText && <div className="agent-result">{agentText}</div>}</> : <div className="ai-off">AI mode is off. Edit the canvas manually.</div>}
-      </aside>
+        {ai ? <><div className="ai-context"><span>DESIGN CONTEXT</span><b>{elements.length} elements · 1080 × 1350</b></div><div className="agent-modes">{(['generate','edit','critique'] as AgentMode[]).map((mode) => <button key={mode} className={agentMode === mode ? 'active' : ''} onClick={() => setAgentMode(mode)}>{mode === 'generate' ? 'Generate' : mode === 'edit' ? 'Text → edit' : 'Critique'}</button>)}</div><textarea className="ai-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={agentMode === 'generate' ? 'Create a launch poster for a new sneaker…' : agentMode === 'critique' ? 'Critique this composition and suggest concrete fixes…' : 'Make the headline larger, tighter, and more premium…'} /><div className="ai-footer"><span className="hint">Gemini 3 Flash · {agentMode}</span><button className="primary" onClick={runAgent} disabled={busy || !prompt.trim()}>{busy ? 'Working…' : 'Run'}</button></div>{agentText && <div className="agent-result">{agentText}</div>}<DesignSystemPanel elements={elements} selectedId={selected} onApplyToken={applyToken} onCreateComponent={createComponent} onInstantiateComponent={instantiateComponent} /></aside>
     </div>
-    {selectedElement && <div className="inspector"><b>{selectedElement.type}</b><span>x {Math.round(selectedElement.x)}</span><span>y {Math.round(selectedElement.y)}</span><span>{Math.round(selectedElement.width)} × {Math.round(selectedElement.height)}</span><span>{hydrated ? 'Autosaved' : 'Loading…'}</span></div>}
+    {selectedElement && <div className="inspector"><b>{selectedElement.type}</b><span>x {Math.round(selectedElement.x)}</span><span>y {Math.round(selectedElement.y)}</span><span>{Math.round(selectedElement.width)} Ã {Math.round(selectedElement.height)}</span><span>{hydrated ? 'Autosaved' : 'Loadingâ¦'}</span></div>}
   </section>;
 }
