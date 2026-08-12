@@ -9,6 +9,7 @@ export type DesignElement = {
   width: number;
   height: number;
   text?: string;
+  src?: string;
   style?: Record<string, string | number>;
 };
 
