@@ -1,0 +1,18 @@
+export const editorTools = [
+  { name: "design.add_text", description: "Add a text element to the active design." },
+  { name: "design.update_element", description: "Update position, size, text, or style of a design element." },
+  { name: "design.delete_element", description: "Delete a design element." },
+  { name: "design.export", description: "Export the active design as an image." },
+  { name: "video.add_clip", description: "Add a media clip to the active video timeline." },
+  { name: "video.split_clip", description: "Split a video clip at a timeline position." },
+  { name: "video.trim_clip", description: "Trim a clip's start or end." },
+  { name: "video.move_clip", description: "Move a clip to a new timeline position or track." },
+  { name: "video.delete_clip", description: "Delete a video clip." },
+  { name: "video.add_text", description: "Add text or captions to a video." },
+  { name: "social.create_post", description: "Create a social post draft from an asset and caption." },
+  { name: "social.schedule_post", description: "Schedule a social post on a connected channel." },
+  { name: "social.get_calendar", description: "Read scheduled and draft posts from the calendar." },
+  { name: "assets.search", description: "Search the user's media library." },
+  { name: "generate.image", description: "Generate an image and save it as a project asset." },
+  { name: "generate.video", description: "Generate a video and save it as a project asset." },
+] as const;
