@@ -29,7 +29,7 @@ export default function DesignSystemPanel({ elements, selectedId, onApplyToken, 
       </button>)}
       {!selected && <div className="panel-empty"><Sparkles size={14}/> Select an element to apply a token.</div>}
     </div> : <div className="component-list">
-      <div className="component-create"><input value={componentName} onChange={(e) => setComponentName(e.target.value)} /><button disabled={!selected} onClick={() => selected && onCreateComponent({ id: `cmp-${crypto.randomUUID()}`, name: componentName || 'Component', elementIds: [selected.id], variants: [] }); setLibrary((current) => ({ ...current, components: [...current.components, { id: `cmp-${crypto.randomUUID()}`, name: componentName || 'Component', elementIds: [selected.id], variants: [] }] }))}><Boxes size={13}/> Create</button></div>
+      <div className="component-create"><input value={componentName} onChange={(e) => setComponentName(e.target.value)} /><button disabled={!selected} onClick={() => { if (!selected) return; const component = { id: `cmp-${crypto.randomUUID()}`, name: componentName || 'Component', elementIds: [selected.id], variants: [] }; onCreateComponent(component); setLibrary((current) => ({ ...current, components: [...current.components, component] })); }}><Boxes size={13}/> Create</button></div>
       {library.components.map((component) => <div className="component-card" key={component.id}><div><b>{component.name}</b><small>{component.elementIds.length} layer(s)</small></div><button onClick={() => onInstantiateComponent(component)}><Copy size={13}/></button></div>)}
       {!library.components.length && <div className="panel-empty"><Boxes size={14}/> Components become reusable building blocks. Create one from a selection.</div>}
     </div>}
