@@ -21,6 +21,9 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
   const [zoom, setZoom] = useState(0.55);
   const [busy, setBusy] = useState(false);
   const [agentText, setAgentText] = useState('');
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drag = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
 
   const selectedElement = useMemo(() => elements.find((e) => e.id === selected) ?? null, [elements, selected]);
@@ -64,6 +67,38 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
   };
 
   useEffect(() => {
+    let cancelled = false;
+    fetch('/api/design')
+      .then(async (res) => {
+        if (!res.ok) throw new Error((await res.json()).error || 'Failed to load design');
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setProjectId(data.project.id);
+        if (Array.isArray(data.document?.elements)) setElements(data.document.elements as DesignElement[]);
+        setHydrated(true);
+      })
+      .catch((error) => {
+        if (!cancelled) { setAgentText(error instanceof Error ? error.message : 'Failed to load design'); setHydrated(true); }
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || !projectId) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      fetch('/api/design', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, elements, width: CANVAS_W, height: CANVAS_H })
+      }).catch(() => setAgentText('Autosave failed. Your local edits are still in this session.'));
+    }, 450);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [elements, hydrated, projectId]);
+
+  useEffect(() => {
     const move = (event: PointerEvent) => {
       if (!drag.current) return;
       const { id, offsetX, offsetY } = drag.current;
@@ -102,6 +137,6 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
         {ai ? <><div className="ai-context"><span>DESIGN CONTEXT</span><b>{elements.length} elements · 1080 × 1350</b></div><textarea className="ai-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Make the headline larger and add a bold black shape behind it…" /><div className="ai-footer"><span className="hint">Gemini 3 Flash</span><button className="primary" onClick={runAgent} disabled={busy || !prompt.trim()}>{busy ? 'Working…' : 'Run'}</button></div>{agentText && <div className="agent-result">{agentText}</div>}</> : <div className="ai-off">AI mode is off. Edit the canvas manually.</div>}
       </aside>
     </div>
-    {selectedElement && <div className="inspector"><b>{selectedElement.type}</b><span>x {Math.round(selectedElement.x)}</span><span>y {Math.round(selectedElement.y)}</span><span>{Math.round(selectedElement.width)} × {Math.round(selectedElement.height)}</span></div>}
+    {selectedElement && <div className="inspector"><b>{selectedElement.type}</b><span>x {Math.round(selectedElement.x)}</span><span>y {Math.round(selectedElement.y)}</span><span>{Math.round(selectedElement.width)} × {Math.round(selectedElement.height)}</span><span>{hydrated ? 'Autosaved' : 'Loading…'}</span></div>}
   </section>;
 }
