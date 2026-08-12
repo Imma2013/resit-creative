@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Minus, Plus, Redo2, Square, Trash2, Type, Undo2, WandSparkles } from 'lucide-react';
+import { Copy, ImagePlus, Minus, Plus, Redo2, Square, Trash2, Type, Undo2, Upload, WandSparkles } from 'lucide-react';
 import type { DesignAction, DesignElement } from '@/lib/types';
 
 type Props = { ai: boolean; setAi: (value: boolean) => void; prompt: string; setPrompt: (value: string) => void };
@@ -117,6 +117,23 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
 
   const undo = () => { const previous = history.at(-1); if (!previous) return; setFuture((f) => [...f, elements]); setHistory((h) => h.slice(0, -1)); setElements(previous); };
   const redo = () => { const next = future.at(-1); if (!next) return; setHistory((h) => [...h, elements]); setFuture((f) => f.slice(0, -1)); setElements(next); };
+  const uploadImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !file.type.startsWith('image/')) { setAgentText('Please choose an image file.'); return; }
+    if (!projectId) { setAgentText('Save the design first, then upload an image.'); return; }
+    setAgentText('Uploading image…');
+    const form = new FormData(); form.append('file', file); form.append('projectId', projectId);
+    try {
+      const response = await fetch('/api/assets', { method: 'POST', body: form });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Upload failed');
+      const id = `el-${crypto.randomUUID()}`;
+      commit([...elements, { id, type: 'image', x: 120, y: 420, width: 640, height: 480, src: data.asset.url, style: { objectFit: 'cover' } }]);
+      setSelected(id); setAgentText('Image added to the canvas.');
+    } catch (error) { setAgentText(error instanceof Error ? error.message : 'Image upload failed.'); }
+  };
+
   const addText = () => commit([...elements, { id: `el-${crypto.randomUUID()}`, type: 'text', x: 120, y: 520, width: 520, height: 80, text: 'New headline', style: { color: '#111', fontSize: 42, fontWeight: 700 } }]);
   const addShape = () => commit([...elements, { id: `el-${crypto.randomUUID()}`, type: 'shape', x: 120, y: 620, width: 360, height: 220, style: { background: '#111' } }]);
   const duplicate = () => { if (!selectedElement) return; const copy = { ...selectedElement, id: `el-${crypto.randomUUID()}`, x: selectedElement.x + 24, y: selectedElement.y + 24 }; commit([...elements, copy]); setSelected(copy.id); };
@@ -125,12 +142,12 @@ export default function DesignEditor({ ai, setAi, prompt, setPrompt }: Props) {
   return <section className="design-editor surface">
     <div className="editor-toolbar">
       <div className="tool-group"><button className="icon-btn" onClick={undo} disabled={!history.length}><Undo2 size={16}/></button><button className="icon-btn" onClick={redo} disabled={!future.length}><Redo2 size={16}/></button></div>
-      <div className="tool-group"><button className="editor-tool" onClick={addText}><Type size={15}/>Text</button><button className="editor-tool" onClick={addShape}><Square size={15}/>Shape</button><button className="editor-tool" onClick={duplicate} disabled={!selectedElement}><Copy size={15}/>Duplicate</button><button className="editor-tool danger" onClick={remove} disabled={!selectedElement}><Trash2 size={15}/>Delete</button></div>
+      <div className="tool-group"><button className="editor-tool" onClick={addText}><Type size={15}/>Text</button><label className="editor-tool" style={{cursor:'pointer'}}><ImagePlus size={15}/>Image<input type="file" accept="image/*" onChange={uploadImage} hidden /></label><button className="editor-tool" onClick={addShape}><Square size={15}/>Shape</button><button className="editor-tool" onClick={duplicate} disabled={!selectedElement}><Copy size={15}/>Duplicate</button><button className="editor-tool danger" onClick={remove} disabled={!selectedElement}><Trash2 size={15}/>Delete</button></div>
       <div className="zoom-controls"><button className="icon-btn" onClick={() => setZoom(Math.max(.35, zoom-.05))}><Minus size={14}/></button><span>{Math.round(zoom*100)}%</span><button className="icon-btn" onClick={() => setZoom(Math.min(.9, zoom+.05))}><Plus size={14}/></button></div>
     </div>
     <div className="editor-main">
       <div className="canvas-stage"><div className="design-canvas" data-design-canvas="true" style={{ width: CANVAS_W * zoom, height: CANVAS_H * zoom }}>
-        {elements.map((element) => <div key={element.id} onPointerDown={(event) => { event.stopPropagation(); setSelected(element.id); const rect = event.currentTarget.getBoundingClientRect(); drag.current = { id: element.id, offsetX: (event.clientX-rect.left)/zoom, offsetY: (event.clientY-rect.top)/zoom }; }} className={`design-element ${selected === element.id ? 'selected' : ''}`} style={{ left: element.x*zoom, top: element.y*zoom, width: element.width*zoom, height: element.height*zoom, background: element.type === 'shape' ? String(element.style?.background ?? '#111') : 'transparent', color: String(element.style?.color ?? '#111'), fontSize: Number(element.style?.fontSize ?? 32)*zoom, fontWeight: Number(element.style?.fontWeight ?? 500) }}>{element.text}</div>)}
+        {elements.map((element) => <div key={element.id} onPointerDown={(event) => { event.stopPropagation(); setSelected(element.id); const rect = event.currentTarget.getBoundingClientRect(); drag.current = { id: element.id, offsetX: (event.clientX-rect.left)/zoom, offsetY: (event.clientY-rect.top)/zoom }; }} className={`design-element ${selected === element.id ? 'selected' : ''}`} style={{ left: element.x*zoom, top: element.y*zoom, width: element.width*zoom, height: element.height*zoom, background: element.type === 'shape' ? String(element.style?.background ?? '#111') : 'transparent', color: String(element.style?.color ?? '#111'), fontSize: Number(element.style?.fontSize ?? 32)*zoom, fontWeight: Number(element.style?.fontWeight ?? 500) }}>{element.type === 'image' && element.src ? <img src={element.src} alt={element.text ?? 'Canvas asset'} draggable={false} style={{width:'100%',height:'100%',objectFit:'cover'}} /> : element.text}</div>)}
       </div></div>
       <aside className={`editor-ai ${ai ? 'on' : ''}`}>
         <div className="ai-header"><div><div className="ai-title"><WandSparkles size={16}/>AI mode</div><div className="hint">Gemini operates the same editor tools.</div></div><button className="toggle" onClick={() => setAi(!ai)} aria-label="Toggle AI" style={{ opacity: ai ? 1 : .45 }} /></div>
