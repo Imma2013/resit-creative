@@ -1,33 +1,19 @@
 # Resit Creative
 
-Resit is an open-source creative workspace inspired by Canva, Palmier, Postiz, Open Design, and Penpot.
+Open-source creative workspace combining design, video editing, social scheduling, and an AI production agent.
 
-## Product
-
-- **Design** — canvas-based photo/design editor with a right-side AI mode.
-- **Video** — timeline editor with AI operations inspired by Palmier's structured editor tooling.
-- **Calendar** — social scheduling and publishing workspace inspired by Postiz.
-- **Agent** — Gemini-powered command center that can use design, video, asset, generation, and social tools.
-- **Settings** — Firebase auth, Convex state, provider connections, and workspace configuration.
+## Product surfaces
+1. Design — manual canvas editing with an optional AI mode.
+2. Video — manual timeline editing with an optional AI mode inspired by Palmier's deterministic editor tools.
+3. Calendar — social scheduling and publishing across X, Instagram, TikTok, YouTube, Facebook, and LinkedIn.
+4. Agent — Gemini 3 Flash agent that can create/edit media and schedule content through the same tools.
+5. Settings — account, AI, storage, and channel configuration.
 
 ## Stack
+Next.js, TypeScript, Supabase, Firebase Auth, Vercel, Gemini 3 Flash.
 
-- Next.js + TypeScript
-- Convex for application state and realtime data
-- Firebase Authentication
-- Vercel deployment
-- Gemini 3 Flash for the agent
-- GitHub for source
+## Run locally
+Copy `.env.example` to `.env.local`, fill the credentials, then run `npm install` and `npm run dev`.
 
-## Architecture principle
-
-AI does not directly rewrite the editor. The agent calls deterministic application tools (`design.*`, `video.*`, `social.*`, `assets.*`, `generate.*`). Human UI and AI use the same underlying operations.
-
-## Blueprint repositories
-
-- Palmier Pro — video editing / AI video editing reference
-- Postiz — social calendar and scheduling reference
-- Open Design — AI design architecture reference
-- Penpot — design editor architecture reference
-
-See `docs/architecture.md` for the implementation roadmap.
+## Blueprint projects
+Palmier Pro, Postiz, Open Design, and Penpot are architectural references. Resit is intended to be implemented as its own open-source codebase rather than combining incompatible source licenses.

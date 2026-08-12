@@ -1,5 +1,5 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
-import { editorTools } from "./tools";
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { editorTools } from './tools';
 
 const toolDeclarations = editorTools.map((tool) => ({
   name: tool.name,
@@ -9,15 +9,14 @@ const toolDeclarations = editorTools.map((tool) => ({
 
 export async function runGeminiAgent(prompt: string) {
   const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY is not configured");
+  if (!key) throw new Error('GEMINI_API_KEY is not configured');
 
   const client = new GoogleGenerativeAI(key);
   const model = client.getGenerativeModel({
-    model: process.env.GEMINI_MODEL || "gemini-3-flash-preview",
+    model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
     tools: [{ functionDeclarations: toolDeclarations }],
-    systemInstruction: "You are Resit's creative agent. Prefer deterministic editor and publishing tools over directly rewriting application state. Explain actions briefly and ask for confirmation before irreversible publishing actions.",
+    systemInstruction: `You are Resit, a creative production agent. You operate the same deterministic tools that human editors use. Prefer small, explicit tool operations over rewriting application state. Never claim an edit happened unless a tool confirms it. Ask for confirmation before irreversible publishing actions. Available tool namespaces: design, video, social, assets, generate.`,
   });
 
-  const result = await model.generateContent(prompt);
-  return result.response;
+  return model.generateContent(prompt);
 }
